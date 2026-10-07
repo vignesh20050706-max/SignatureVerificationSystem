@@ -149,7 +149,7 @@ SignatureVerificationSystem/
 
 # Project Type
 
-Final Year Engineering Project
+Third Year Engineering Mini Project
 
 Artificial Intelligence
 
