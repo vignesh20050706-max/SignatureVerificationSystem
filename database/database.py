@@ -173,18 +173,27 @@ def save_template(
     ref1,
     ref2,
     ref3,
-    feature_vector
+    feature_vectors
 ):
+    """
+    feature_vectors: list of 3 feature dicts (one per reference signature)
+    """
 
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Compute simple statistics from the average of the three
+    avg_duration = sum(fv.get("duration", 0.0) for fv in feature_vectors) / 3
+    avg_velocity = sum(fv.get("mean_velocity", 0.0) for fv in feature_vectors) / 3
+    avg_pressure = sum(fv.get("mean_pressure", 0.0) for fv in feature_vectors) / 3
+    avg_max_pressure = sum(fv.get("max_pressure", 0.0) for fv in feature_vectors) / 3
+
     statistics = {
         "samples": 3,
-        "average_duration": feature_vector.get("duration", 0.0),
-        "average_velocity": feature_vector.get("mean_velocity", 0.0),
-        "average_pressure": feature_vector.get("mean_pressure", 0.0),
-        "average_max_pressure": feature_vector.get("max_pressure", 0.0)
+        "average_duration": avg_duration,
+        "average_velocity": avg_velocity,
+        "average_pressure": avg_pressure,
+        "average_max_pressure": avg_max_pressure
     }
 
     cursor.execute("""
@@ -203,7 +212,7 @@ def save_template(
         json.dumps(ref1),
         json.dumps(ref2),
         json.dumps(ref3),
-        json.dumps(feature_vector),
+        json.dumps(feature_vectors),   # now a list of 3 feature dicts
         json.dumps(statistics),
         datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ))

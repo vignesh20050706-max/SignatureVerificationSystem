@@ -117,14 +117,15 @@ def verify_signature():
         if template is None:
 
             return jsonify({
-
                 "success": False,
-
                 "message": "Template not found."
-
             })
 
-        reference = template["FeatureVector"]
+        feature_vectors = template["FeatureVector"]
+
+        # Support both old (single dict) and new (list of 3 dicts) format
+        if isinstance(feature_vectors, dict):
+            feature_vectors = [feature_vectors]
 
         customer = get_customer_by_id(
             data["customer_id"]
@@ -136,121 +137,101 @@ def verify_signature():
 
         ai_result = predict_signature(test)
 
-        similarity = calculate_similarity(reference, test)
+        # Multi-template: compute similarity against every reference and take the best
+        similarities = []
+        for ref_fv in feature_vectors:
+            sim = calculate_similarity(ref_fv, test)
+            similarities.append(sim)
+
+        similarity = max(similarities) if similarities else 0.0
+        best_ref_index = similarities.index(similarity) if similarities else 0
+        best_reference = feature_vectors[best_ref_index]
 
         ai_decision = ai_result["decision"]
+        confidence = float(ai_result["confidence"])
 
-        confidence = float(
+        # =========================================================
+        # Combined Decision Logic with Natural Variation Buffer
+        # ---------------------------------------------------------
+        # Goal: Be tolerant of normal variation from the same person
+        #       while still rejecting clear forgeries / different people
+        # =========================================================
 
-            ai_result["confidence"]
+        if similarity >= 90:
+            # Very strong match → almost certainly the same person
+            decision = "Authentic"
 
-        )
+        elif similarity <= 68:
+            # Very weak match → different person / clear forgery
+            decision = "Forgery"
 
-        HIGH_CONFIDENCE = 85
-        MEDIUM_CONFIDENCE = 65
-
-        if ai_decision == "Authentic":
-
-            if confidence >= HIGH_CONFIDENCE:
+        elif similarity >= 82:
+            # Natural Variation Buffer Zone
+            # High similarity gets benefit of the doubt (genuine users)
+            if confidence >= 58 or ai_decision == "Authentic":
                 decision = "Authentic"
-
-            elif confidence >= MEDIUM_CONFIDENCE:
+            else:
                 decision = "Human Verification Required"
 
+        elif similarity >= 75:
+            # Medium zone – use both signals carefully
+            if ai_decision == "Authentic" and confidence >= 68:
+                decision = "Authentic"
+            elif ai_decision == "Forgery" and confidence >= 72:
+                decision = "Forgery"
             else:
-                decision = "Forgery"
-
-        else:  # AI predicted Forgery
-
-            if confidence >= HIGH_CONFIDENCE:
-                decision = "Forgery"
-
-            elif confidence >= MEDIUM_CONFIDENCE:
                 decision = "Human Verification Required"
 
+        else:
+            # Weaker match (68–75)
+            if ai_decision == "Forgery" and confidence >= 70:
+                decision = "Forgery"
             else:
-                decision = "Authentic"
+                decision = "Human Verification Required"
 
-            pdf_name = (
-
+        # Fixed: pdf_name is now always defined
+        pdf_name = (
             customer["AccountNumber"]
-
             + "_"
-
-            + datetime.now().strftime(
-
-                "%Y%m%d_%H%M%S"
-
-            )
-
+            + datetime.now().strftime("%Y%m%d_%H%M%S")
             + ".pdf"
-
         )
 
-        pdf_path = os.path.join(
-
-            "reports",
-
-            pdf_name
-
-        )
+        pdf_path = os.path.join("reports", pdf_name)
 
         generate_pdf(
-
             pdf_path,
-
             customer["Name"],
-
             customer["AccountNumber"],
-
             decision,
-
             ai_result["confidence"],
-
             similarity,
-
-            reference,
-
+            best_reference,
             test
-
         )
 
         add_history(
-
             data["customer_id"],
-
             decision,
-
             ai_result["confidence"],
-
             pdf_path
-
         )
 
         return jsonify({
-
             "pdf": pdf_path,
-
             "success": True,
-
             "decision": decision,
-
             "confidence": ai_result["confidence"],
-
             "similarity": similarity,
-
-            "reference_features": reference,
-
+            "all_similarities": similarities,
+            "best_match_index": best_ref_index,
+            "reference_features": best_reference,
             "test_features": test
-
         })
 
     except Exception as e:
 
         return jsonify({
-
             "success": False,
-
             "message": str(e)
-
         })

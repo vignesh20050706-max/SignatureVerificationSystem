@@ -85,35 +85,15 @@ def save_customer():
         feature2 = FeatureExtractor.extract(reference2)
         feature3 = FeatureExtractor.extract(reference3)
 
-        average = {}
-
-        for key in feature1:
-
-            average[key] = round(
-
-                (
-                    feature1[key] +
-                    feature2[key] +
-                    feature3[key]
-
-                ) / 3,
-
-                5
-
-            )
+        # Store individual feature vectors for multi-template matching
+        feature_vectors = [feature1, feature2, feature3]
 
         save_template(
-
             customer_id,
-
             reference1,
-
             reference2,
-
             reference3,
-
-            average
-
+            feature_vectors
         )
 
         return jsonify({
